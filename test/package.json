@@ -1,0 +1,10 @@
+{
+  "name": "wild8-rooms-tests",
+  "private": true,
+  "description": "Test suites for Wild Eights (rules-level + browser-level)",
+  "type": "commonjs",
+  "dependencies": {
+    "playwright": "^1.62.1",
+    "socket.io-client": "^4.8.3"
+  }
+}
