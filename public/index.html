@@ -94,11 +94,13 @@
   }
   .cardface .corner{ position:absolute; font-size:13px; font-weight:900; }
   .cardface .corner.tl{ top:6px; left:9px; } .cardface .corner.br{ bottom:6px; right:9px; transform:rotate(180deg); }
-  .cardface.cr{ background:linear-gradient(160deg,#ff7a7a,#d63a3a); }
-  .cardface.cg{ background:linear-gradient(160deg,#4fe08f,#1ea75c); }
-  .cardface.cy{ background:linear-gradient(160deg,#ffd257,#eda416); }
-  .cardface.cb{ background:linear-gradient(160deg,#7ba3ff,#3f68d9); }
-  .cardface.cw{ background:conic-gradient(from 45deg,#ff5757 0 90deg,#ffc233 0 180deg,#33d17a 0 270deg,#5b8cff 0 360deg); font-size:22px; }
+  .cardface.cr, .hcard.cr{ background:linear-gradient(160deg,#ff7a7a,#d63a3a); }
+  .cardface.cg, .hcard.cg{ background:linear-gradient(160deg,#4fe08f,#1ea75c); }
+  .cardface.cy, .hcard.cy{ background:linear-gradient(160deg,#ffd257,#eda416); }
+  .cardface.cb, .hcard.cb{ background:linear-gradient(160deg,#7ba3ff,#3f68d9); }
+  .cardface.cw, .hcard.cw{ background:conic-gradient(from 45deg,#ff5757 0 90deg,#ffc233 0 180deg,#33d17a 0 270deg,#5b8cff 0 360deg); }
+  .cardface.cw{ font-size:22px; }
+  .hcard.cw{ font-size:13px; }
   .cardface.back{ background:linear-gradient(160deg,#242a4e,#141833); border-color:rgba(255,255,255,.25);
     color:var(--mut); font-size:15px; letter-spacing:.1em; cursor:pointer; }
   .cardface.back .pips{ position:absolute; inset:12px; border-radius:8px; border:2px dashed rgba(255,255,255,.15); }
