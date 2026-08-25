@@ -106,14 +106,31 @@ async function test(title, fn) {
     pillN === 3 ? ok("3 player pills on the strip") : bad(`expected 3 pills, got ${pillN}`);
     ok(`opening hand: ${handN} cards`);
 
+    // hand cards must render in color (regression: color CSS applied only to table cards)
+    const uncolored = await A.evaluate(() => [...document.querySelectorAll("#hand .hcard")]
+      .filter((c) => getComputedStyle(c).backgroundImage === "none").length);
+    uncolored === 0 ? ok("every hand card has a visible background color (gradient applied)")
+      : bad(`${uncolored} hand card(s) render with no background color`);
+
     let playedLifted = false, drewStuck = false, wildPlayed = false, pickerOk = false,
         drawnChoice = false, games = 1, shot = false;
     const deadline = Date.now() + 420000;
 
-    const playWildViaPicker = async (clickFn) => {
-      await clickFn();
+    // bots keep playing while we act, so hand indices can go stale between reading
+    // state and clicking — use short-timeout clicks and let the loop re-read on a miss
+    const tryClick = (pg, sel) => pg.click(sel, { timeout: 2500 }).then(() => true, () => false);
+
+    const playWildViaPicker = async (clickFn, wildIdx) => {
+      if (!(await clickFn())) return false; // stale element — loop re-reads state
       const appeared = await A.waitForSelector("#picker:not(.hidden)", { timeout: 4000 }).then(() => true, () => false);
-      if (!appeared) { bad("wild clicked but color picker never appeared"); return false; }
+      if (!appeared) {
+        // only a real bug if the state still says that card is a playable wild
+        const st = await snap(A);
+        if (st.status === "playing" && st.turn === st.mySeat && st.phase === "turn"
+            && st.hand[wildIdx] === "w" && st.legal.includes(wildIdx))
+          bad("wild clicked but color picker never appeared");
+        return false;
+      }
       const want = "g";
       await A.click(`#picker .swatch[data-c="${want}"]`);
       await A.waitForFunction(() => document.getElementById("picker").classList.contains("hidden"), null, { timeout: 4000 });
@@ -126,11 +143,12 @@ async function test(title, fn) {
     while (Date.now() < deadline) {
       const st = await snap(A);
       if (st.status === "over") {
-        if (!wildPlayed && games < 3 && Date.now() < deadline - 150000) {
+        const missing = [!wildPlayed && "playable wild", !drewStuck && "stuck turn"].filter(Boolean);
+        if (missing.length && games < 4 && Date.now() < deadline - 150000) {
           games++;
           await A.click("#rematchBtn");
           await A.waitForFunction(() => S.room.status === "playing", null, { timeout: 10000 });
-          flag(`no wild was playable in game ${games - 1} — dealt again (game ${games})`);
+          flag(`game ${games - 1} ended without a ${missing.join(" or ")} — dealt again (game ${games})`);
           continue;
         }
         break;
@@ -142,24 +160,22 @@ async function test(title, fn) {
         // play-or-keep on a freshly drawn playable card
         drawnChoice = true;
         if (st.hand[st.drawnIdx] === "w") {
-          if (await playWildViaPicker(() => A.click("#playDrawnBtn"))) { wildPlayed = true; pickerOk = true; }
-        } else if (Math.random() < 0.8) await A.click("#playDrawnBtn");
-        else await A.click("#keepBtn");
+          if (await playWildViaPicker(() => tryClick(A, "#playDrawnBtn"), st.drawnIdx)) { wildPlayed = true; pickerOk = true; }
+        } else if (Math.random() < 0.8) await tryClick(A, "#playDrawnBtn");
+        else await tryClick(A, "#keepBtn");
         await A.waitForTimeout(500);
         continue;
       }
       if (st.legal.length) {
         const wildIdx = st.legal.find((i) => st.hand[i] === "w");
         if (wildIdx !== undefined) {
-          if (await playWildViaPicker(() => A.click(`#hand .hcard[data-i="${wildIdx}"]`))) { wildPlayed = true; pickerOk = true; }
-        } else {
-          await A.click(`#hand .hcard[data-i="${st.legal[0]}"]`);
+          if (await playWildViaPicker(() => tryClick(A, `#hand .hcard[data-i="${wildIdx}"]`), wildIdx)) { wildPlayed = true; pickerOk = true; }
+        } else if (await tryClick(A, `#hand .hcard[data-i="${st.legal[0]}"]`)) {
           if (!playedLifted) ok("played a lifted (legal) card by clicking it");
           playedLifted = true;
         }
         if (!shot) { await A.screenshot({ path: SHOTS + "/midgame.png" }); shot = true; }
-      } else {
-        await A.click("#drawpile");
+      } else if (await tryClick(A, "#drawpile")) {
         if (!drewStuck) ok("no legal card — tapped the draw pile and a card arrived");
         drewStuck = true;
       }
@@ -250,8 +266,12 @@ async function test(title, fn) {
     M.on("dialog", (d) => d.accept());
 
     const audit = async (stage) => {
-      const issues = await M.evaluate(() => {
+      const issues = await M.evaluate((devW) => {
         const out = [];
+        // rapid taps can trigger double-tap zoom in mobile emulation; geometry vs the
+        // visual viewport is meaningless then, so measure only at the device's true width
+        if (Math.abs(window.innerWidth - devW) > 2)
+          return ["ZOOMED:" + window.innerWidth];
         const W = window.innerWidth, de = document.documentElement;
         if (de.scrollWidth > W + 1) out.push(`page overflows horizontally: ${de.scrollWidth}px > ${W}px viewport`);
         const sels = "button, input, .hcard, .avchip, .swatch, #drawpile, .chattoggle, .sendbtn, #voiceLeave";
@@ -271,7 +291,11 @@ async function test(title, fn) {
           }
         }
         return out;
-      });
+      }, iphone.viewport.width);
+      if (issues[0] && issues[0].startsWith("ZOOMED:")) {
+        flag(`[${stage}] audit skipped — page zoomed by double-tap during play (innerWidth ${issues[0].slice(7)}px)`);
+        return;
+      }
       issues.length ? issues.forEach((i) => flag(`[${stage}] ${i}`)) : ok(`[${stage}] no overflow, tap targets ≥24px`);
     };
     const auditPicker = async (mode) => {
@@ -302,25 +326,28 @@ async function test(title, fn) {
     await M.waitForSelector("#hand .hcard", { timeout: 10000 });
     ok("Deal by touch → game + hand rendered");
 
+    // same staleness rule as the desktop loop: short-timeout taps, re-read state on a miss
+    const tryTap = (sel) => M.tap(sel, { timeout: 2500 }).then(() => true, () => false);
     let plays = 0, draws = 0, pickerLive = false;
     const stop = Date.now() + 60000;
     while (Date.now() < stop && (plays + draws) < 8) {
       const st = await snap(M);
       if (st.status !== "playing") break;
       if (st.turn !== st.mySeat) { await M.waitForTimeout(350); continue; }
-      if (st.phase === "drawn") { await M.tap("#playDrawnBtn"); plays++; }
+      if (st.phase === "drawn") { if (await tryTap("#playDrawnBtn")) plays++; }
       else if (st.legal.length) {
         const wildIdx = st.legal.find((i) => st.hand[i] === "w");
         const i = wildIdx !== undefined ? wildIdx : st.legal[0];
-        await M.tap(`#hand .hcard[data-i="${i}"]`);
-        if (wildIdx !== undefined) {
-          await M.waitForSelector("#picker:not(.hidden)", { timeout: 4000 });
-          await auditPicker("live"); pickerLive = true;
-          await M.tap('#picker .swatch[data-c="b"]');
-          await M.waitForFunction(() => document.getElementById("picker").classList.contains("hidden"), null, { timeout: 4000 });
+        if (await tryTap(`#hand .hcard[data-i="${i}"]`)) {
+          if (wildIdx !== undefined &&
+              await M.waitForSelector("#picker:not(.hidden)", { timeout: 4000 }).then(() => true, () => false)) {
+            await auditPicker("live"); pickerLive = true;
+            await M.tap('#picker .swatch[data-c="b"]');
+            await M.waitForFunction(() => document.getElementById("picker").classList.contains("hidden"), null, { timeout: 4000 });
+          }
+          plays++;
         }
-        plays++;
-      } else { await M.tap("#drawpile"); draws++; }
+      } else if (await tryTap("#drawpile")) draws++;
       await M.waitForTimeout(600);
     }
     (plays + draws) >= 2 ? ok(`cards tappable by touch (${plays} plays, ${draws} draws)`) : bad("touch taps not registering on cards/draw pile");
