@@ -106,11 +106,17 @@ async function test(title, fn) {
     pillN === 3 ? ok("3 player pills on the strip") : bad(`expected 3 pills, got ${pillN}`);
     ok(`opening hand: ${handN} cards`);
 
-    // hand cards must render in color (regression: color CSS applied only to table cards)
+    // hand cards must render in color (regression: color CSS applied only to table cards);
+    // cards are white-framed with the color in the inner .field (wilds use a solid base + ::before art)
     const uncolored = await A.evaluate(() => [...document.querySelectorAll("#hand .hcard")]
-      .filter((c) => getComputedStyle(c).backgroundImage === "none").length);
-    uncolored === 0 ? ok("every hand card has a visible background color (gradient applied)")
-      : bad(`${uncolored} hand card(s) render with no background color`);
+      .filter((c) => {
+        const f = c.querySelector(".field");
+        if (!f) return true;
+        const cs = getComputedStyle(f);
+        return cs.backgroundImage === "none" && (cs.backgroundColor === "rgba(0, 0, 0, 0)" || cs.backgroundColor === "transparent");
+      }).length);
+    uncolored === 0 ? ok("every hand card has a colored inner field")
+      : bad(`${uncolored} hand card(s) have no .field or an uncolored one`);
 
     let playedLifted = false, drewStuck = false, wildPlayed = false, pickerOk = false,
         drawnChoice = false, games = 1, shot = false;
