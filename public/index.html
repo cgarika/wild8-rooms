@@ -12,6 +12,8 @@
   }
   html, body, *{ scrollbar-width:none; }
   ::-webkit-scrollbar{ width:0; height:0; display:none; }
+  :where(button, a, input, select, textarea, [role="button"], [tabindex]):focus-visible{ outline:3px solid #ffcd3c; outline-offset:3px; }
+  @media (prefers-reduced-motion:reduce){ *, *::before, *::after{ animation-duration:.001ms !important; animation-iteration-count:1 !important; transition-duration:.001ms !important; scroll-behavior:auto !important; } }
   *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; touch-action:manipulation; }
   body{
     margin:0; min-height:100vh; color:var(--txt);
@@ -112,6 +114,14 @@
   .cg .field{ background:radial-gradient(120% 95% at 28% 18%, #8ff5bd 0%, #33d17a 42%, #0c6b3c 100%); }
   .cy .field{ background:radial-gradient(120% 95% at 28% 18%, #ffe79a 0%, #ffc233 42%, #b57400 100%); }
   .cw .field{ background:radial-gradient(120% 95% at 28% 18%, #3a3260 0%, #1c1736 45%, #0d0a1c 100%); }
+  /* colour-blind pack: each colour also carries a pattern — red stripes, blue hatch, green dots, yellow checks */
+  .cr .field::before{ background-image:repeating-linear-gradient(-45deg, rgba(255,255,255,.22) 0 5px, transparent 5px 14px); }
+  .cb .field::before{ background-image:repeating-linear-gradient(45deg, rgba(255,255,255,.18) 0 3px, transparent 3px 11px), repeating-linear-gradient(-45deg, rgba(255,255,255,.18) 0 3px, transparent 3px 11px); }
+  .cg .field::before{ background-image:radial-gradient(circle, rgba(255,255,255,.28) 2.2px, transparent 2.8px); background-size:12px 12px; }
+  .cy .field::before{ background-image:repeating-linear-gradient(0deg, rgba(120,70,0,.16) 0 6px, transparent 6px 12px), repeating-linear-gradient(90deg, rgba(120,70,0,.16) 0 6px, transparent 6px 12px); }
+  .cw .field::before{ background-image:none; }
+  .cardface .num.sym, .hcard .num.sym{ font-size:1.3em; }
+  #colorname{ font-weight:800; color:var(--txt); text-transform:capitalize; }
   /* soft inner oval (the classic centre ellipse) — tinted, not white, so the colour stays rich */
   .cardface .field::before, .hcard .field::before{ content:""; position:absolute; width:150%; height:78%;
     left:-25%; top:11%; border-radius:50%; transform:rotate(-32deg);
@@ -274,7 +284,7 @@
     </div>
     <div class="tableinfo">
       <div id="discard"></div>
-      <div style="display:flex;align-items:center;gap:6px">color <span class="colordot" id="colordot"></span></div>
+      <div style="display:flex;align-items:center;gap:6px">color <span class="colordot" id="colordot"></span><span id="colorname"></span></div>
     </div>
   </div>
   <div class="actionhint" id="actionhint"></div>
@@ -476,7 +486,7 @@ function renderLobby(r){
 function cardHTML(card, cls, attrs){
   const t = faceTxt(card);
   return `<div class="${cls} ${CCLS[card.c]}" ${attrs||""}>
-    <i class="field"></i><span class="corner">${t}</span><b class="num">${t}</b>
+    <i class="field"></i><span class="corner">${t}</span><b class="num${card.v==="S"||card.v==="R"?" sym":""}">${t}</b>
     ${cls.indexOf("cardface")===0?`<span class="corner br">${t}</span>`:""}
   </div>`;
 }
@@ -507,6 +517,7 @@ function renderGame(r){
   } else { DHIST=[]; $("discard").innerHTML=""; }
   $("colordot").style.background = CHEX[r.color] || "#999";
   $("colordot").style.color = CHEX[r.color] || "#999";
+  $("colorname").textContent = ({ r:"red", g:"green", y:"yellow", b:"blue" })[r.color] || "";
   $("deckCount").textContent = r.deckCount + " left";
 
   const drawnMode = myTurn && r.phase==="drawn";
@@ -531,8 +542,8 @@ function renderGame(r){
   if (r.status==="over") $("actionhint").innerHTML = "";
   else if (me && me.left) $("actionhint").innerHTML = "You left this game.";
   else if (drawnMode) $("actionhint").innerHTML = "You drew a playable card — <b>play it or keep it</b>.";
-  else if (myTurn && r.yourLegal.length) $("actionhint").innerHTML = "Tap a lifted card to play it.";
-  else if (myTurn) $("actionhint").innerHTML = "No playable cards — <b>tap the draw pile</b>.";
+  else if (myTurn && r.yourLegal.length) $("actionhint").innerHTML = `Your turn — play <b>${({ r:"red", g:"green", y:"yellow", b:"blue" })[r.color] || "the colour"}</b>${r.top&&r.top.v?` or a <b>${faceTxt(r.top)}</b>`:""}, or a wild.`;
+  else if (myTurn) $("actionhint").innerHTML = "No playable card — <b>draw one</b>.";
   else $("actionhint").innerHTML = "";
   $("log").textContent = r.log || "";
   $("overbox").classList.toggle("hidden", r.status!=="over");
