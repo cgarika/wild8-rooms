@@ -134,6 +134,14 @@
     color:var(--mut); font-size:15px; letter-spacing:.1em; cursor:pointer; display:flex; align-items:center;
     justify-content:center; font-weight:900; padding:0; }
   .cardface.back .pips{ position:absolute; inset:11px; border-radius:8px; border:2px dashed rgba(255,255,255,.16); }
+  /* your turn: the pile is live; no playable card: it is THE move — gold glow + pulse (transform only) */
+  .cardface.back.turn{ border-color:rgba(255,255,255,.6); color:var(--txt); }
+  .cardface.back.must{ border-color:var(--yellow); color:var(--yellow);
+    box-shadow:0 2.5px 0 rgba(0,0,0,.28), 0 12px 24px rgba(0,0,0,.5), 0 0 0 3px rgba(255,194,51,.35), 0 0 26px rgba(255,194,51,.6);
+    animation:drawpulse 1.1s ease-in-out infinite; will-change:transform; }
+  .cardface.back.must .pips{ border-color:rgba(255,194,51,.55); }
+  @keyframes drawpulse{ 0%,100%{ transform:translateY(0) scale(1); } 50%{ transform:translateY(-6px) scale(1.04); } }
+  @media (prefers-reduced-motion:reduce){ .cardface.back.must{ animation:none; } }
   .colordot{ width:20px; height:20px; border-radius:50%; border:2px solid #fff; box-shadow:0 0 12px currentColor; }
   .tableinfo{ display:flex; flex-direction:column; align-items:center; gap:8px; font-size:12px; color:var(--mut); font-weight:700; }
 
@@ -515,6 +523,9 @@ function renderGame(r){
     return cardHTML(card, "hcard"+(legal?" legal":"")+(jd?" justdrawn legal":""), `data-i="${i}" data-c="${card.c}" style="--dd:${k*0.028}s"`);
   }).join("");
   $("handCount").textContent = (r.yourHand||[]).length + " cards";
+  const canDraw = myTurn && r.phase==="turn", mustDraw = canDraw && !(r.yourLegal||[]).length;
+  $("drawpile").classList.toggle("turn", canDraw && !mustDraw);
+  $("drawpile").classList.toggle("must", mustDraw);
   $("drawnrow").classList.toggle("hidden", !drawnMode);
   const me = r.players[S.mySeat];
   if (r.status==="over") $("actionhint").innerHTML = "";
