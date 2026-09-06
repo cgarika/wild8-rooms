@@ -176,8 +176,11 @@
   .hand.fade-l{ -webkit-mask-image:linear-gradient(90deg, transparent, #000 44px); mask-image:linear-gradient(90deg, transparent, #000 44px); }
   .hand.fade-r{ -webkit-mask-image:linear-gradient(270deg, transparent, #000 44px); mask-image:linear-gradient(270deg, transparent, #000 44px); }
   .hand.fade-l.fade-r{ -webkit-mask-image:linear-gradient(90deg, transparent, #000 44px, #000 calc(100% - 44px), transparent); mask-image:linear-gradient(90deg, transparent, #000 44px, #000 calc(100% - 44px), transparent); }
-  .log{ transition:opacity .35s var(--ease); }
-  .log:not(.fresh){ opacity:0; pointer-events:none; }
+  /* the history strip lives 2.4 s then fades — driven by a CSS animation so it retires even when JS timers are throttled (embedded WebKit) */
+  .log{ opacity:0; pointer-events:none; }
+  .log.fresh{ animation:stripLife 2.8s ease forwards; }
+  @keyframes stripLife{ 0%,80%{ opacity:1; } 100%{ opacity:0; } }
+  @media (prefers-reduced-motion:reduce){ .log.fresh{ animation:none; opacity:1; } }
   .hand .hcard + .hcard{ margin-left:-20px; }
   .hand > .hcard:first-child{ margin-left:auto; } .hand > .hcard:last-child{ margin-right:auto; }   /* centred while it fits, scrolls when it does not */
   .hand .hcard.legal{ z-index:2; } .hand .hcard.justdrawn{ z-index:3; }
@@ -575,7 +578,7 @@ function renderGame(r){
   else if (myTurn && r.yourLegal.length) $("actionhint").innerHTML = `Your turn — play <b>${({ r:"red", g:"green", y:"yellow", b:"blue" })[r.color] || "the colour"}</b>${r.top&&r.top.v?` or a <b>${faceTxt(r.top)}</b>`:""}, or a wild.`;
   else if (myTurn) $("actionhint").innerHTML = "No playable card — <b>draw one</b>.";
   else $("actionhint").innerHTML = "";
-  if ((r.log || "") !== lastLogTxt) { lastLogTxt = r.log || ""; $("log").textContent = lastLogTxt; $("log").classList.add("fresh"); clearTimeout(logT); logT = setTimeout(() => $("log").classList.remove("fresh"), 2400); }   // history is a transient strip, not a permanent panel
+  if ((r.log || "") !== lastLogTxt) { lastLogTxt = r.log || ""; $("log").textContent = lastLogTxt; const lg = $("log"); lg.classList.remove("fresh"); void lg.offsetWidth; lg.classList.add("fresh"); clearTimeout(logT); logT = setTimeout(() => lg.classList.remove("fresh"), 3000); }   // history is a transient strip, not a permanent panel
   $("log").classList.toggle("hidden", /goes first\./.test(r.log||"") && !!$("actionhint").textContent.trim());
   $("overbox").classList.toggle("hidden", r.status!=="over");
   if (r.status==="over"){
