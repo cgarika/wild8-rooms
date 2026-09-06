@@ -92,7 +92,7 @@
   .dirarrow{ font-size:20px; color:var(--yellow); }
   .timer{ width:44px; height:44px; border-radius:50%; display:flex; align-items:center; justify-content:center;
     font-weight:900; font-size:13px; background:conic-gradient(var(--yellow) calc(var(--pct,0)*1%), rgba(255,255,255,.08) 0); }
-  .timer span{ width:35px; height:35px; border-radius:50%; background:#161a33; display:flex; align-items:center; justify-content:center; }
+  .timer span{ width:35px; height:35px; font-size:12px; letter-spacing:-.02em; border-radius:50%; background:#161a33; display:flex; align-items:center; justify-content:center; }
 
   .table{ width:100%; max-width:560px; display:flex; justify-content:center; align-items:center; gap:22px; margin:6px 0 4px; }
   /* Card faces: white frame, rich radial colour field (poster-art anatomy: light hot-spot top-left → base → deep rim),
@@ -103,7 +103,7 @@
   .hcard{ width:64px; height:94px; border-radius:11px; padding:4px; flex:none; cursor:default;
     transition:transform .16s var(--ease), box-shadow .2s, filter .2s; will-change:transform; }
   .hcard:not(.legal):not(.justdrawn){ filter:brightness(.6) saturate(.8); }
-  .hcard.legal{ cursor:pointer; transform:translateY(-8px) translateZ(0);
+  .hcard.legal{ cursor:pointer; transform:translateY(-12px) translateZ(0);
     box-shadow:0 2.5px 0 rgba(0,0,0,.28), 0 14px 26px rgba(0,0,0,.5), 0 0 18px rgba(255,194,51,.5); }
   .hcard.legal:active{ transform:translateY(-4px) scale(.96); }
   .hcard.justdrawn{ outline:3px solid var(--yellow); outline-offset:2px; }
@@ -115,12 +115,20 @@
   .cy .field{ background:radial-gradient(120% 95% at 28% 18%, #ffe79a 0%, #ffc233 42%, #b57400 100%); }
   .cw .field{ background:radial-gradient(120% 95% at 28% 18%, #3a3260 0%, #1c1736 45%, #0d0a1c 100%); }
   /* colour-blind pack: each colour also carries a pattern — red stripes, blue hatch, green dots, yellow checks */
-  .cr .field::before{ background-image:repeating-linear-gradient(-45deg, rgba(255,255,255,.22) 0 5px, transparent 5px 14px); }
-  .cb .field::before{ background-image:repeating-linear-gradient(45deg, rgba(255,255,255,.18) 0 3px, transparent 3px 11px), repeating-linear-gradient(-45deg, rgba(255,255,255,.18) 0 3px, transparent 3px 11px); }
-  .cg .field::before{ background-image:radial-gradient(circle, rgba(255,255,255,.28) 2.2px, transparent 2.8px); background-size:12px 12px; }
-  .cy .field::before{ background-image:repeating-linear-gradient(0deg, rgba(120,70,0,.16) 0 6px, transparent 6px 12px), repeating-linear-gradient(90deg, rgba(120,70,0,.16) 0 6px, transparent 6px 12px); }
+  .cr .field::before{ background-image:repeating-linear-gradient(-45deg, rgba(255,255,255,.42) 0 7px, transparent 7px 19px); }
+  .cb .field::before{ background-image:repeating-linear-gradient(45deg, rgba(255,255,255,.34) 0 4px, transparent 4px 14px), repeating-linear-gradient(-45deg, rgba(255,255,255,.34) 0 4px, transparent 4px 14px); }
+  .cg .field::before{ background-image:radial-gradient(circle, rgba(255,255,255,.5) 3.4px, transparent 4.2px); background-size:15px 15px; }
+  .cy .field::before{ background-image:repeating-linear-gradient(0deg, rgba(120,70,0,.3) 0 8px, transparent 8px 16px), repeating-linear-gradient(90deg, rgba(120,70,0,.3) 0 8px, transparent 8px 16px); }
+  /* …and a corner motif per colour so the pattern survives at thumbnail size */
+  .cardface .motif, .hcard .motif{ position:absolute; right:7px; top:7px; width:16px; height:16px; z-index:3; border-radius:4px; opacity:.95; }
+  .hcard .motif{ width:13px; height:13px; right:6px; top:6px; }
+  .cr .motif{ background:repeating-linear-gradient(-45deg,#fff 0 3px,#a8151f 3px 6px); }
+  .cb .motif{ background:repeating-linear-gradient(45deg,#fff 0 2px,transparent 2px 5px), repeating-linear-gradient(-45deg,#fff 0 2px,#1f3fb0 2px 5px); }
+  .cg .motif{ background:radial-gradient(circle,#fff 2px,transparent 2.5px) 0 0/6px 6px, #0c6b3c; }
+  .cy .motif{ background:conic-gradient(#7a4a00 0 25%,#ffe79a 0 50%,#7a4a00 0 75%,#ffe79a 0) 0 0/8px 8px; }
+  .cw .motif{ display:none; }
   .cw .field::before{ background-image:none; }
-  .cardface .num.sym, .hcard .num.sym{ font-size:1.3em; }
+  .cardface .num.sym{ font-size:66px; } .hcard .num.sym{ font-size:46px; }
   #colorname{ font-weight:800; color:var(--txt); text-transform:capitalize; }
   /* soft inner oval (the classic centre ellipse) — tinted, not white, so the colour stays rich */
   .cardface .field::before, .hcard .field::before{ content:""; position:absolute; width:150%; height:78%;
@@ -158,7 +166,14 @@
   .handwrap{ width:100%; max-width:560px; margin-top:14px; }
   .handlabel{ display:flex; justify-content:space-between; align-items:center; font-size:11.5px; font-weight:800;
     letter-spacing:.1em; color:var(--mut); text-transform:uppercase; padding:0 4px 6px; }
-  .hand{ display:flex; flex-wrap:wrap; justify-content:center; gap:8px; padding:14px 6px 10px; }
+  .hand{ display:flex; flex-wrap:nowrap; align-items:flex-end; gap:0; padding:16px 10px 10px; overflow-x:auto; overflow-y:visible;
+    -webkit-overflow-scrolling:touch; scrollbar-width:none; scroll-snap-type:x proximity; }
+  .hand::-webkit-scrollbar{ display:none; }
+  .hand .hcard{ scroll-snap-align:center; }
+  .hand .hcard + .hcard{ margin-left:-20px; }
+  .hand > .hcard:first-child{ margin-left:auto; } .hand > .hcard:last-child{ margin-right:auto; }   /* centred while it fits, scrolls when it does not */
+  .hand .hcard.legal{ z-index:2; } .hand .hcard.justdrawn{ z-index:3; }
+  .hand .hcard.legal:active{ z-index:4; }
   .hand, .table{ transform:translateZ(0); }
   .dstack{ position:relative; width:88px; height:128px; }
   .dstack .cardface{ position:absolute; inset:0; }
@@ -486,7 +501,7 @@ function renderLobby(r){
 function cardHTML(card, cls, attrs){
   const t = faceTxt(card);
   return `<div class="${cls} ${CCLS[card.c]}" ${attrs||""}>
-    <i class="field"></i><span class="corner">${t}</span><b class="num${card.v==="S"||card.v==="R"?" sym":""}">${t}</b>
+    <i class="field"></i><i class="motif"></i><span class="corner">${t}</span><b class="num${card.v==="S"||card.v==="R"?" sym":""}">${t}</b>
     ${cls.indexOf("cardface")===0?`<span class="corner br">${t}</span>`:""}
   </div>`;
 }
@@ -546,6 +561,7 @@ function renderGame(r){
   else if (myTurn) $("actionhint").innerHTML = "No playable card — <b>draw one</b>.";
   else $("actionhint").innerHTML = "";
   $("log").textContent = r.log || "";
+  $("log").classList.toggle("hidden", /goes first\./.test(r.log||"") && !!$("actionhint").textContent.trim());
   $("overbox").classList.toggle("hidden", r.status!=="over");
   if (r.status==="over"){
     $("winname").textContent = r.players[r.winner] ? r.players[r.winner].name + " wins!" : "Game over";
@@ -607,7 +623,7 @@ setInterval(()=>{
   const r=S.room;
   if(!r||!r.phaseEndsAt||r.status!=="playing"){ $("timerNum").textContent="–"; $("timer").style.setProperty("--pct",0); return; }
   const left=Math.max(0, r.phaseEndsAt-Date.now());
-  $("timerNum").textContent=Math.ceil(left/1000);
+  $("timerNum").textContent=Math.ceil(left/1000)+"s";
   const total=r._total||(r._total=left);
   $("timer").style.setProperty("--pct", Math.round((left/Math.max(total,1))*100));
 },250);
