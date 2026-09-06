@@ -172,6 +172,12 @@
     -webkit-overflow-scrolling:touch; scrollbar-width:none; scroll-snap-type:x proximity; }
   .hand::-webkit-scrollbar{ display:none; }
   .hand .hcard{ scroll-snap-align:center; }
+  /* edge fades only on the side that has more cards */
+  .hand.fade-l{ -webkit-mask-image:linear-gradient(90deg, transparent, #000 28px); mask-image:linear-gradient(90deg, transparent, #000 28px); }
+  .hand.fade-r{ -webkit-mask-image:linear-gradient(270deg, transparent, #000 28px); mask-image:linear-gradient(270deg, transparent, #000 28px); }
+  .hand.fade-l.fade-r{ -webkit-mask-image:linear-gradient(90deg, transparent, #000 28px, #000 calc(100% - 28px), transparent); mask-image:linear-gradient(90deg, transparent, #000 28px, #000 calc(100% - 28px), transparent); }
+  .log{ transition:opacity .35s var(--ease); }
+  .log:not(.fresh){ opacity:0; pointer-events:none; }
   .hand .hcard + .hcard{ margin-left:-20px; }
   .hand > .hcard:first-child{ margin-left:auto; } .hand > .hcard:last-child{ margin-right:auto; }   /* centred while it fits, scrolls when it does not */
   .hand .hcard.legal{ z-index:2; } .hand .hcard.justdrawn{ z-index:3; }
@@ -441,7 +447,8 @@ function tone(f,dur,type,vol,when){
 }
 function shake(el){ if(!el) return; el.classList.remove("jshake"); void el.offsetWidth; el.classList.add("jshake"); }
 let S = { room:null, mySeat:-1 };
-let handScrollKey = "";
+let handScrollKey = "", lastLogTxt = null, logT = null;
+function updateHandFades(){ const h = $("hand"); if (!h) return; h.classList.toggle("fade-l", h.scrollLeft > 4); h.classList.toggle("fade-r", h.scrollLeft + h.clientWidth < h.scrollWidth - 4); }
 let chatOpen=false, unread=0, lastChatLen=0, pendingWild=null;
 let DHIST=[], prevHandLen=-1, lastLPKey="";
 
@@ -551,7 +558,8 @@ function renderGame(r){
   { const key = r.turn + "|" + (r.drawnIdx ?? "") + "|" + sorted.length;   // once per new situation, so it never fights a finger scrolling the fan
     if (key !== handScrollKey) { handScrollKey = key;
       const jd = $("hand").querySelector(".hcard.justdrawn") || (myTurn ? $("hand").querySelector(".hcard.legal") : null);   // a wide hand scrolls: bring the drawn card (or your first playable one) into view
-      if (jd && jd.scrollIntoView) jd.scrollIntoView({ inline: "center", block: "nearest" }); } }
+      if (jd && jd.scrollIntoView) jd.scrollIntoView({ inline: "center", block: "nearest" }); }
+    updateHandFades(); }
     const jd = drawnMode && i===r.drawnIdx;
     return cardHTML(card, "hcard"+(legal?" legal":"")+(jd?" justdrawn legal":""), `data-i="${i}" data-c="${card.c}" style="--dd:${k*0.028}s"`);
   }).join("");
@@ -567,7 +575,7 @@ function renderGame(r){
   else if (myTurn && r.yourLegal.length) $("actionhint").innerHTML = `Your turn — play <b>${({ r:"red", g:"green", y:"yellow", b:"blue" })[r.color] || "the colour"}</b>${r.top&&r.top.v?` or a <b>${faceTxt(r.top)}</b>`:""}, or a wild.`;
   else if (myTurn) $("actionhint").innerHTML = "No playable card — <b>draw one</b>.";
   else $("actionhint").innerHTML = "";
-  $("log").textContent = r.log || "";
+  if ((r.log || "") !== lastLogTxt) { lastLogTxt = r.log || ""; $("log").textContent = lastLogTxt; $("log").classList.add("fresh"); clearTimeout(logT); logT = setTimeout(() => $("log").classList.remove("fresh"), 2400); }   // history is a transient strip, not a permanent panel
   $("log").classList.toggle("hidden", /goes first\./.test(r.log||"") && !!$("actionhint").textContent.trim());
   $("overbox").classList.toggle("hidden", r.status!=="over");
   if (r.status==="over"){
@@ -757,6 +765,7 @@ socket.on("voice", async (msg)=>{
     } else if (d.ice){ await pc.addIceCandidate(d.ice); }
   }catch(e){}
 });
+$("hand").addEventListener("scroll", updateHandFades, { passive:true });
 </script>
 </body>
 </html>
