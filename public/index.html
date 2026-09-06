@@ -441,6 +441,7 @@ function tone(f,dur,type,vol,when){
 }
 function shake(el){ if(!el) return; el.classList.remove("jshake"); void el.offsetWidth; el.classList.add("jshake"); }
 let S = { room:null, mySeat:-1 };
+let handScrollKey = "";
 let chatOpen=false, unread=0, lastChatLen=0, pendingWild=null;
 let DHIST=[], prevHandLen=-1, lastLPKey="";
 
@@ -547,6 +548,10 @@ function renderGame(r){
   $("hand").classList.toggle("nodeal", !(grew || firstDeal));
   $("hand").innerHTML = sorted.map(({card,i},k)=>{
     const legal = myTurn && r.phase==="turn" && r.yourLegal.includes(i);
+  { const key = r.turn + "|" + (r.drawnIdx ?? "") + "|" + sorted.length;   // once per new situation, so it never fights a finger scrolling the fan
+    if (key !== handScrollKey) { handScrollKey = key;
+      const jd = $("hand").querySelector(".hcard.justdrawn") || (myTurn ? $("hand").querySelector(".hcard.legal") : null);   // a wide hand scrolls: bring the drawn card (or your first playable one) into view
+      if (jd && jd.scrollIntoView) jd.scrollIntoView({ inline: "center", block: "nearest" }); } }
     const jd = drawnMode && i===r.drawnIdx;
     return cardHTML(card, "hcard"+(legal?" legal":"")+(jd?" justdrawn legal":""), `data-i="${i}" data-c="${card.c}" style="--dd:${k*0.028}s"`);
   }).join("");
