@@ -191,6 +191,33 @@ async function playToEnd(cs,cap){
         cs.forEach(c=>c.disconnect());
       } finally { srv.kill(); }
     }
+    // ---- T6: a leaver's cards go back under the draw pile; a stuck round ends immediately ----
+    {
+      const { spawn } = require("child_process");
+      const P=3341, URL2="http://localhost:"+P;
+      const srv = spawn(process.execPath, ["server.js"], { env: { ...process.env, PORT:String(P), BOT_MS:"5", TEST_HOOKS:"1" }, stdio:"ignore" });
+      await sleep(600);
+      const mk2=(name)=>{ const c=io(URL2,{transports:["websocket"],reconnection:false}); c.st=null; c.seat=-1; c.logs=[]; c.on("state",({room,mySeat})=>{ c.st=room; c.seat=mySeat; if(room&&room.log) c.logs.push(room.log); }); return c; };
+      const wait=async(fn,ms=6000)=>{ const t0=Date.now(); while(Date.now()-t0<ms){ if(fn()) return true; await sleep(15);} return false; };
+      const boot=async(n)=>{ const cs=[]; for(let i=0;i<n;i++) cs.push(mk2("L"+i)); await sleep(250); let code=null; cs[0].on("joined",j=>{code=j.code;}); cs[0].emit("create",{name:"L0",playerId:"l0"+Math.random(),avatar:"🦊"}); await wait(()=>code); for(let i=1;i<n;i++) cs[i].emit("join",{code,name:"L"+i,playerId:"l"+i+Math.random(),avatar:"🐼"}); await wait(()=>cs[0].st&&cs[0].st.players.length===n); cs[0].emit("start"); await wait(()=>cs.every(c=>c.st&&c.st.status==="playing"&&c.st.yourHand.length===7)); return cs; };
+      try {
+        { const cs=await boot(3); const leaver=cs[2]; const before=cs[0].st.deckCount; const handN=leaver.st.yourHand.length; const v0=cs[0].st.v||0;
+          leaver.emit("leave"); if(!(await wait(()=>cs[0].st.players[leaver.seat].left))) throw new Error("T6: leave not registered");
+          const after=cs[0].st.deckCount; if(after!==before+handN) throw new Error(`T6: draw pile ${before} → ${after}, expected ${before+handN} (leaver held ${handN})`);
+          console.log("PASS T6 leaver's "+handN+" cards returned to the draw pile ("+before+" → "+after+")"); cs.forEach(c=>c.disconnect()); }
+        { const cs=await boot(2); const cur=cs.find(c=>c.st.turn===c.seat), other=cs.find(c=>c.st.turn!==c.seat);
+          // craft: empty deck, only the top discard left, current player holds two cards that cannot be played on it
+          const top=cur.st.top; const badColor=["r","g","y","b"].find(c=>c!==top.c&&c!==cur.st.color); const badVal=String(top.v)==="3"?"4":"3";
+          cur.emit("__test",{ emptyDeck:true, discardTopOnly:true, hands:{ [cur.seat]:[{c:badColor,v:badVal},{c:badColor,v:badVal}], [other.seat]:[{c:badColor,v:badVal},{c:badColor,v:badVal},{c:badColor,v:badVal}] } });
+          await wait(()=>cur.st.deckCount===0 && cur.st.yourHand.length===2);
+          if(cur.st.yourLegal.length) throw new Error("T6: crafted hand still has a legal card");
+          cur.emit("draw");
+          if(!(await wait(()=>cur.st.status==="over",3000))) throw new Error("T6: stuck round did not end (phase "+cur.st.phase+")");
+          if(cur.st.winner!==cur.seat) throw new Error("T6: winner should be the lowest hand ("+cur.st.log+")");
+          if(!/round over/i.test(cur.st.log)) throw new Error("T6: no round-over log: "+cur.st.log);
+          console.log("PASS T6 empty piles + no legal card → round ends, lowest hand wins"); cs.forEach(c=>c.disconnect()); }
+      } finally { srv.kill(); }
+    }
     console.log("ALL WILD EIGHTS TESTS PASS");
     process.exit(0);
   }catch(e){ console.error("FAIL:", e.message); process.exit(1); }

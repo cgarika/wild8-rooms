@@ -52,6 +52,17 @@ function freshDeck() {
 function clearT(map, code) { const t = map.get(code); if (t) { clearTimeout(t); map.delete(code); } }
 function deleteRoom(code) { clearT(timers, code); clearT(botTimers, code); rooms.delete(code); roomSockets.delete(code); }
 function seated(room) { return room.players.filter((p) => !p.left); }
+function shuffleArr(a) { for (let k = a.length - 1; k > 0; k--) { const j = crypto.randomInt(k + 1); [a[k], a[j]] = [a[j], a[k]]; } return a; }
+/* T6: nobody can draw and the current player has no legal card → the round ends now, lowest hand wins. */
+function endRoundStuck(room) {
+  const act = activeSeats(room);
+  const best = act.slice().sort((a, b) => room.hands[a].length - room.hands[b].length || a - b)[0];
+  room.winner = best;
+  room.status = "over"; room.phase = "over";
+  room.standings = room.players.map((q, i) => ({ seat: i, cards: room.hands[i].length, left: q.left })).sort((a, b) => a.cards - b.cards);
+  room.log = `No cards left to draw and nothing to play — round over. ${room.players[best].name} has the fewest cards and wins!`;
+  clearT(timers, room.code); clearT(botTimers, room.code);
+}
 
 function setupGame(room) {
   room.deck = freshDeck();
@@ -183,9 +194,8 @@ function colorName(c) { return { r: "Red", g: "Green", y: "Yellow", b: "Blue" }[
 
 function doDraw(room, seat) {
   const got = drawCards(room, seat, 1);
-  if (!got) { // no cards anywhere
-    room.log = `${room.players[seat].name} can't draw — pile is empty. Passing.`;
-    endTurnAdvance(room, false, 0);
+  if (!got) { // no cards anywhere: the round cannot continue (T6)
+    endRoundStuck(room);
     return;
   }
   room.lastPlay = { seat, card: null, drew: 1 };
@@ -432,6 +442,14 @@ io.on("connection", (socket) => {
     bump(room);
   });
 
+  if (process.env.TEST_HOOKS === "1") socket.on("__test", ({ emptyDeck, discardTopOnly, hands } = {}) => {   // test-only: craft a stuck position
+    const room = currentRoom(); if (!room || room.status !== "playing") return;
+    if (emptyDeck) room.deck = [];
+    if (discardTopOnly) room.discard = room.discard.slice(-1);
+    if (hands && typeof hands === "object") for (const [seat, cards] of Object.entries(hands)) if (room.hands[Number(seat)] && Array.isArray(cards)) room.hands[Number(seat)] = cards.map((c) => ({ c: String(c.c), v: String(c.v) }));
+    bump(room);
+  });
+
   socket.on("play", ({ i, color } = {}) => {
     const room = currentRoom();
     if (!room || room.status !== "playing") return;
@@ -542,6 +560,10 @@ io.on("connection", (socket) => {
     } else {
       const seat = room.players.indexOf(p);
       p.left = true; p.connected = false;
+      if (room.status === "playing" && room.hands && room.hands[seat].length) {   // T6: their cards go back under the draw pile, shuffled
+        const back = shuffleArr(room.hands[seat].splice(0));
+        room.deck.unshift(...back);
+      }
       if (room.players.every((q) => q.bot || q.left)) { detach(); deleteRoom(room.code); return; }
       if (room.host === p.id) room.host = (room.players.find((q) => !q.bot && !q.left) || room.players[0]).id;
       room.log = `${p.name} left the game.`;
