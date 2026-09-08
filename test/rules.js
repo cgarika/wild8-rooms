@@ -133,6 +133,41 @@ async function playToEnd(cs,cap){
     }
     console.log("PASS bot games x2 with rematch — winners:", winners.join(", "));
     H.close();
+
+    // ---- Test 4 (T1 AFK policy): own fast-clock server on 3321 ----
+    {
+      const { spawn } = require("child_process");
+      const TURN=700, AFK=250, P=3321, URL2="http://localhost:"+P;
+      const srv = spawn(process.execPath, ["server.js"], { env: { ...process.env, PORT:String(P), TURN_MS:String(TURN), AFK_MS:String(AFK), BOT_MS:"5" }, stdio:"ignore" });
+      await sleep(600);
+      const mk2=(name)=>{ const c=io(URL2,{transports:["websocket"],reconnection:false}); c.st=null; c.seat=-1; c.logs=[]; c.on("state",({room,mySeat})=>{ c.st=room; c.seat=mySeat; if(room&&room.log) c.logs.push(room.log); }); return c; };
+      const until=async(fn,ms=4000)=>{ const t0=Date.now(); while(Date.now()-t0<ms){ if(fn()) return true; await sleep(15);} return false; };
+      const room2=async()=>{ const A=mk2("A"),B=mk2("B"); let code=null; A.on("joined",j=>{code=j.code;}); await sleep(200); A.emit("create",{name:"A",playerId:"afkA"+Math.random(),avatar:"🦊"}); await until(()=>code); B.emit("join",{code,name:"B",playerId:"afkB"+Math.random(),avatar:"🐼"}); await until(()=>B.st&&B.st.players.length===2); A.emit("start"); await until(()=>A.st&&A.st.status==="playing"); return {A,B}; };
+      try {
+        // 4a. the current player disconnects → the turn is auto-played on the AFK clock
+        { const {A,B}=await room2(); const first=A.st.turn; const gone=first===0?A:B, W=first===0?B:A; gone.disconnect(); const t0=Date.now(); const adv=await until(()=>W.st&&W.st.turn!==first, TURN+800); const dt=Date.now()-t0;
+          if(!adv) throw new Error("AFK: disconnected player's turn was not auto-played"); if(dt>=TURN) throw new Error("AFK: fired on the normal clock ("+dt+" ms)");
+          if(!(await until(()=>W.logs.some(l=>/played for them/.test(l)),600))) throw new Error("AFK: no timeout note in the log");
+          console.log("PASS AFK 5s clock — auto-played after "+dt+" ms (normal "+TURN+")"); W.disconnect(); }
+        // 4b. three timeouts → botControlled; takeSeat and a real action clear it
+        { const {A,B}=await room2(); const drive=(c)=>{ const r=c.st; if(!r||r.status!=="playing"||r.turn!==c.seat) return; if(r.phase==="drawn") c.emit("keep"); else if(r.yourLegal&&r.yourLegal.length){ const i=r.yourLegal[0]; const card=r.yourHand[i]; c.emit("play",{i,color:card.c==="w"?"r":undefined}); } else c.emit("draw"); };
+          A.on("state",()=>setTimeout(()=>drive(A),10));
+          const idle=B.seat;
+          if(!(await until(()=>B.st&&B.st.players[idle].botControlled, TURN*8))) throw new Error("AFK: seat never became botControlled");
+          if(B.st.players[idle].bot||B.st.players[idle].name!=="B") throw new Error("AFK: seat identity changed");
+          if(!(await until(()=>B.logs.some(l=>/playing for B/.test(l)),500))) throw new Error("AFK: no takeover log");
+          B.emit("takeSeat"); if(!(await until(()=>!B.st.players[idle].botControlled,1500))) throw new Error("AFK: takeSeat did not clear the flag");
+          if(!(await until(()=>B.st.players[idle].botControlled, TURN*8))) throw new Error("AFK: seat did not flip a second time");
+          B.emit("draw"); if(!(await until(()=>!B.st.players[idle].botControlled,1500))) throw new Error("AFK: a human action did not clear the flag");
+          console.log("PASS AFK takeover after 3 timeouts, takeSeat + action hand it back"); A.disconnect(); B.disconnect(); }
+        // 4c. a bot-controlled seat completes a whole game
+        { const {A,B}=await room2(); A.on("state",()=>{ const r=A.st; if(!r||r.status!=="playing"||r.turn!==A.seat) return; setTimeout(()=>{ const r2=A.st; if(!r2||r2.status!=="playing"||r2.turn!==A.seat) return; if(r2.phase==="drawn") A.emit("keep"); else if(r2.yourLegal&&r2.yourLegal.length){ const i=r2.yourLegal[0]; A.emit("play",{i,color:r2.yourHand[i].c==="w"?"r":undefined}); } else A.emit("draw"); },5); });
+          const idle=B.seat; B.disconnect();
+          if(!(await until(()=>A.st&&A.st.status==="over",60000))) throw new Error("AFK: game with a bot-controlled seat stalled");
+          if(!A.st.players[idle].botControlled) throw new Error("AFK: absent seat never became bot-controlled");
+          console.log("PASS AFK bot-controlled seat finished a full game — winner "+A.st.players[A.st.winner].name); A.disconnect(); }
+      } finally { srv.kill(); }
+    }
     console.log("ALL WILD EIGHTS TESTS PASS");
     process.exit(0);
   }catch(e){ console.error("FAIL:", e.message); process.exit(1); }

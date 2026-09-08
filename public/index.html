@@ -314,6 +314,7 @@
     </div>
   </div>
   <div class="actionhint" id="actionhint"></div>
+  <button class="btn small hidden" id="seatBackBtn" style="width:auto;margin:6px auto 0;display:block" onclick="socket.emit('takeSeat')">Take my seat back</button>
   <div class="drawnrow hidden" id="drawnrow">
     <button class="btn gold small" id="playDrawnBtn">Play it</button>
     <button class="btn plain small" id="keepBtn">Keep it</button>
@@ -524,7 +525,7 @@ function renderGame(r){
   const myTurn = S.mySeat === r.turn && r.status==="playing";
   $("strip").innerHTML = r.players.map((p,i)=>`
     <div class="pill${i===r.turn&&r.status==="playing"?" turn":""}${p.left?" gone":""}">
-      ${p.left?"💀":p.avatar} ${i===S.mySeat?"You":esc(p.name)}${p.bot?" 🤖":""}
+      ${p.left?"💀":p.avatar} ${i===S.mySeat?"You":esc(p.name)}${p.bot?" 🤖":""}${p.botControlled?' <span class="last" title="A bot is playing this seat">🤖 bot playing</span>':""}
       <span class="cnt">${p.count}</span>
       ${p.count===1&&!p.left?'<span class="last">LAST CARD!</span>':""}
     </div>`).join("");
@@ -572,8 +573,10 @@ function renderGame(r){
   $("drawpile").classList.toggle("must", mustDraw);
   $("drawnrow").classList.toggle("hidden", !drawnMode);
   const me = r.players[S.mySeat];
+  $("seatBackBtn").classList.toggle("hidden", !(me && me.botControlled && r.status==="playing"));
   if (r.status==="over") $("actionhint").innerHTML = "";
   else if (me && me.left) $("actionhint").innerHTML = "You left this game.";
+  else if (me && me.botControlled) $("actionhint").innerHTML = "A bot is playing for you — <b>take your seat back</b> when you are ready.";
   else if (drawnMode) $("actionhint").innerHTML = "You drew a playable card — <b>play it or keep it</b>.";
   else if (myTurn && r.yourLegal.length) $("actionhint").innerHTML = `Your turn — play <b>${({ r:"red", g:"green", y:"yellow", b:"blue" })[r.color] || "the colour"}</b>${r.top&&r.top.v?` or a <b>${faceTxt(r.top)}</b>`:""}, or a wild.`;
   else if (myTurn) $("actionhint").innerHTML = "No playable card — <b>draw one</b>.";
