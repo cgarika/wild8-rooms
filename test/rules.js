@@ -124,14 +124,19 @@ async function playToEnd(cs,cap){
     let c3=null; H.on("joined",j=>{c3=j.code;});
     H.emit("create",{name:"Host",playerId:"wh",avatar:"🦊"}); await sleep(250);
     for(let i=0;i<3;i++) H.emit("addBot"); await sleep(300);
-    const winners=[];
-    for(let g=0;g<2;g++){
+    const winners=[]; let carried=0;
+    for(let g=0;g<3;g++){
       if(g===0) H.emit("start"); else H.emit("rematch");
       await sleep(300);
       if(!await playToEnd([H],30000)) throw new Error("bot game "+g+" stalled");
       winners.push(H.st.players[H.st.winner].name);
+      // T15: the winner banks the points left in every other hand; totals carry across rematches
+      const st=H.st, rp=st.roundPoints; const expect=st.standings.filter(s=>s.seat!==st.winner).reduce((a,s)=>a+s.pts,0);
+      if (rp!==expect) throw new Error("T15: round points "+rp+" != sum of losing hands "+expect);
+      carried+=rp; const sum=st.totals.reduce((a,b)=>a+b,0); if (sum!==carried) throw new Error("T15: totals "+sum+" do not carry ("+carried+" expected after round "+(g+1)+")");
+      if (st.champion!=null && st.totals[st.champion] < st.target) throw new Error("T15: champion below target");
     }
-    console.log("PASS bot games x2 with rematch — winners:", winners.join(", "));
+    console.log("PASS bot games x3 with rematch — winners:", winners.join(", "), "| T15 totals carried across 3 rounds ("+carried+" pts)");
     H.close();
 
     // ---- Test 4 (T1 AFK policy): own fast-clock server on 3321 ----
@@ -242,6 +247,31 @@ async function playToEnd(cs,cap){
         const r4 = mkRoom([[card("g", "2"), card("g", "3")], [card("b", "3"), card("b", "4"), card("b", "5")]], card("r", "9"), "r");
         if (botChoose(r4, 0) !== null) throw new Error("T9: expected a draw with no legal card");
         console.log("PASS T9 colour preference — dominant-colour number, then action, then wild naming that colour, else draw"); }
+    }
+    // ---- T15: the match ends at the target ----
+    {
+      const { cardPts } = require("../server.js");
+      if (cardPts({c:"r",v:"7"})!==7 || cardPts({c:"g",v:"S"})!==20 || cardPts({c:"b",v:"+2"})!==20 || cardPts({c:"w",v:"W"})!==50 || cardPts({c:"w",v:"+4"})!==50 || cardPts({c:"y",v:"0"})!==0) throw new Error("T15: card points wrong");
+      const { spawn } = require("child_process");
+      const P=3351, URL2="http://localhost:"+P;
+      const srv = spawn(process.execPath, ["server.js"], { env: { ...process.env, PORT:String(P), BOT_MS:"5", TEST_HOOKS:"1" }, stdio:"ignore" });
+      await sleep(600);
+      const H2=io(URL2,{transports:["websocket"],reconnection:false}); H2.st=null; H2.seat=-1; H2.on("state",({room,mySeat})=>{ H2.st=room; H2.seat=mySeat; });
+      const wait=async(fn,ms=6000)=>{ const t0=Date.now(); while(Date.now()-t0<ms){ if(fn()) return true; await sleep(15);} return false; };
+      try {
+        let code=null; H2.on("joined",j=>{code=j.code;}); await sleep(200); H2.emit("create",{name:"Host",playerId:"tgt"+Math.random(),avatar:"🦊"}); await wait(()=>code);
+        H2.emit("addBot"); H2.emit("addBot"); await wait(()=>H2.st&&H2.st.players.length===3);
+        H2.emit("start"); await wait(()=>H2.st.status==="playing");
+        H2.emit("__test",{ totals:{0:490,1:490,2:490} }); await wait(()=>H2.st.totals&&H2.st.totals[0]===490);
+        const drive=async()=>{ for(let k=0;k<30000;k++){ const r=H2.st; if(r.status==="over") return true; if(r.turn===H2.seat){ if(r.phase==="turn"){ const i=r.yourLegal[0]; if(i!=null) H2.emit("play",{i,color:"r"}); else H2.emit("draw"); } else if(r.phase==="drawn"){ const c=r.yourHand[r.drawnIdx]; const top=r.top; const legal=c&&(c.c==="w"||c.c===r.color||c.v===top.v); if(legal) H2.emit("play",{i:r.drawnIdx,color:"r"}); else H2.emit("keep"); } } await sleep(8);} return false; };
+        if(!(await drive())) throw new Error("T15: target game stalled");
+        const st=H2.st; if(st.champion!==st.winner) throw new Error("T15: crossing 500 should crown the round winner (champion "+st.champion+", winner "+st.winner+")");
+        if(st.totals[st.winner] < 500) throw new Error("T15: champion total "+st.totals[st.winner]+" below target");
+        if(!/MATCH WON/.test(st.log)) throw new Error("T15: no match-won log");
+        H2.emit("rematch"); await wait(()=>H2.st.status==="playing"); if(H2.st.totals.some(t=>t!==0)||H2.st.champion!=null) throw new Error("T15: new match should reset totals");
+        console.log("PASS T15 match ends at 500 — winner crowned, rematch starts a fresh tally");
+        H2.close();
+      } finally { srv.kill(); }
     }
     console.log("ALL WILD EIGHTS TESTS PASS");
     process.exit(0);

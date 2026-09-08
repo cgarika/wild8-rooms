@@ -53,15 +53,30 @@ function clearT(map, code) { const t = map.get(code); if (t) { clearTimeout(t); 
 function deleteRoom(code) { clearT(timers, code); clearT(botTimers, code); rooms.delete(code); roomSockets.delete(code); }
 function seated(room) { return room.players.filter((p) => !p.left); }
 function shuffleArr(a) { for (let k = a.length - 1; k > 0; k--) { const j = crypto.randomInt(k + 1); [a[k], a[j]] = [a[j], a[k]]; } return a; }
+/* T15: standard card points — numbers face value, Skip/Reverse/+2 = 20, wilds = 50. The round winner collects the
+   points left in every other hand; totals run across rematches in the same room and the match ends at MATCH_TARGET. */
+const MATCH_TARGET = Math.max(50, Number(process.env.MATCH_TARGET || 500));
+function cardPts(card) { return card.c === "w" ? 50 : ["S", "R", "+2"].includes(card.v) ? 20 : Number(card.v) || 0; }
+function finishRound(room, winnerSeat, log) {
+  room.winner = winnerSeat;
+  room.status = "over"; room.phase = "over";
+  room.totalsById = room.totalsById || {};
+  const w = room.players[winnerSeat];
+  let pts = 0;
+  room.players.forEach((q, i) => { if (i !== winnerSeat) pts += room.hands[i].reduce((a, c) => a + cardPts(c), 0); });
+  room.roundPoints = pts;
+  room.totalsById[w.id] = (room.totalsById[w.id] || 0) + pts;
+  room.standings = room.players.map((q, i) => ({ seat: i, cards: room.hands[i].length, pts: room.hands[i].reduce((a, c) => a + cardPts(c), 0), total: room.totalsById[q.id] || 0, left: q.left }))
+    .sort((a, b) => (a.seat === winnerSeat ? -1 : b.seat === winnerSeat ? 1 : a.cards - b.cards));
+  room.log = `${log} +${pts} points.`;
+  if (room.totalsById[w.id] >= MATCH_TARGET) { room.champion = winnerSeat; room.log += ` ${w.name} reaches ${room.totalsById[w.id]} — MATCH WON! 🏆`; }
+  clearT(timers, room.code); clearT(botTimers, room.code);
+}
 /* T6: nobody can draw and the current player has no legal card → the round ends now, lowest hand wins. */
 function endRoundStuck(room) {
   const act = activeSeats(room);
   const best = act.slice().sort((a, b) => room.hands[a].length - room.hands[b].length || a - b)[0];
-  room.winner = best;
-  room.status = "over"; room.phase = "over";
-  room.standings = room.players.map((q, i) => ({ seat: i, cards: room.hands[i].length, left: q.left })).sort((a, b) => a.cards - b.cards);
-  room.log = `No cards left to draw and nothing to play — round over. ${room.players[best].name} has the fewest cards and wins!`;
-  clearT(timers, room.code); clearT(botTimers, room.code);
+  finishRound(room, best, `No cards left to draw and nothing to play — round over. ${room.players[best].name} has the fewest cards and wins!`);
 }
 
 function setupGame(room) {
@@ -82,6 +97,8 @@ function setupGame(room) {
   room.lastPlay = null;   // { seat, card|null, drew, effect }
   room.winner = null;
   room.standings = null;
+  room.roundPoints = 0;
+  room.totalsById = room.totalsById || {};
   room.status = "playing";
   room.log = `${room.players[room.turn].name} goes first. Match the color or the number.`;
   armTimer(room.code);
@@ -171,13 +188,7 @@ function playCard(room, seat, idx, colorPick) {
   if (hand.length === 1) msg += ` LAST CARD!`;
   if (hand.length === 0) {
     pl.done = true;
-    room.winner = seat;
-    room.status = "over";
-    room.phase = "over";
-    room.standings = room.players.map((q, i) => ({ seat: i, cards: room.hands[i].length, left: q.left }))
-      .sort((a, b) => a.cards - b.cards);
-    room.log = `${pl.name} is out of cards — ${pl.name.toUpperCase()} WINS! 🎉`;
-    clearT(timers, room.code); clearT(botTimers, room.code);
+    finishRound(room, seat, `${pl.name} is out of cards — ${pl.name.toUpperCase()} WINS! 🎉`);
     return true;
   }
   room.log = msg;
@@ -223,6 +234,7 @@ function stateFor(room, seat) {
     top: room.discard ? room.discard[room.discard.length - 1] : null,
     deckCount: room.deck ? room.deck.length : 0,
     log: room.log, winner: room.winner, standings: room.standings,
+    totals: room.players.map((p) => (room.totalsById && room.totalsById[p.id]) || 0), roundPoints: room.roundPoints || 0, target: MATCH_TARGET, champion: room.champion ?? null,
     hostSeat: room.players.findIndex((p) => p.id === room.host),
     lastPlay: room.lastPlay, phaseEndsAt: room.phaseEndsAt || null,
     maxPlayers: MAX_PLAYERS,
@@ -465,8 +477,9 @@ io.on("connection", (socket) => {
     bump(room);
   });
 
-  if (process.env.TEST_HOOKS === "1") socket.on("__test", ({ emptyDeck, discardTopOnly, hands } = {}) => {   // test-only: craft a stuck position
+  if (process.env.TEST_HOOKS === "1") socket.on("__test", ({ emptyDeck, discardTopOnly, hands, totals } = {}) => {   // test-only: craft a stuck position / totals
     const room = currentRoom(); if (!room || room.status !== "playing") return;
+    if (totals && typeof totals === "object") { room.totalsById = room.totalsById || {}; for (const [seat, v] of Object.entries(totals)) if (room.players[Number(seat)]) room.totalsById[room.players[Number(seat)].id] = Number(v) || 0; }
     if (emptyDeck) room.deck = [];
     if (discardTopOnly) room.discard = room.discard.slice(-1);
     if (hands && typeof hands === "object") for (const [seat, cards] of Object.entries(hands)) if (room.hands[Number(seat)] && Array.isArray(cards)) room.hands[Number(seat)] = cards.map((c) => ({ c: String(c.c), v: String(c.v) }));
@@ -563,6 +576,7 @@ io.on("connection", (socket) => {
     if (!room || room.status !== "over" || room.host !== socket.data.playerId) return;
     room.players = room.players.filter((p) => !p.left);
     room.players.forEach((p) => { p.done = false; });
+    if (room.champion != null) { room.totalsById = {}; room.champion = null; }   // T15: the match is settled → fresh tally
     if (room.players.filter((p) => !p.bot).length === 0) { deleteRoom(room.code); return; }
     if (room.players.length < 2) { room.status = "lobby"; room.phase = "lobby"; room.log = "Back to the lobby."; bump(room); return; }
     setupGame(room);
@@ -593,11 +607,7 @@ io.on("connection", (socket) => {
       if (room.status === "playing") {
         const act = activeSeats(room);
         if (act.length === 1) {
-          room.winner = act[0];
-          room.status = "over"; room.phase = "over";
-          room.standings = room.players.map((q, i) => ({ seat: i, cards: room.hands[i].length, left: q.left })).sort((a, b) => a.cards - b.cards);
-          room.log = `${room.players[act[0]].name} is the last one standing — they win!`;
-          clearT(timers, room.code); clearT(botTimers, room.code);
+          finishRound(room, act[0], `${room.players[act[0]].name} is the last one standing — they win!`);
         } else if (room.turn === seat) {
           endTurnAdvance(room, false, 0);
           armTimer(room.code);
@@ -625,4 +635,4 @@ setInterval(() => {
 }, 10 * 60 * 1000);
 
 if (require.main === module) server.listen(PORT, () => console.log("Wild Eights running on port " + PORT));
-module.exports = { legalIdx, botChoose, botColorPick, nextSeat };
+module.exports = { legalIdx, botChoose, botColorPick, nextSeat, cardPts, finishRound, MATCH_TARGET };

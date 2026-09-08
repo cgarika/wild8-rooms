@@ -585,9 +585,10 @@ function renderGame(r){
   $("log").classList.toggle("hidden", /goes first\./.test(r.log||"") && !!$("actionhint").textContent.trim());
   $("overbox").classList.toggle("hidden", r.status!=="over");
   if (r.status==="over"){
-    $("winname").textContent = r.players[r.winner] ? r.players[r.winner].name + " wins!" : "Game over";
-    $("standings").innerHTML = (r.standings||[]).map((s,rank)=>`
-      <div class="standing"><span>#${rank+1} ${esc(r.players[s.seat].name)}${s.left?" (left)":""}</span><span>${s.cards} cards</span></div>`).join("");
+    $("winname").textContent = r.champion!=null ? r.players[r.champion].name + " wins the match! 🏆" : r.players[r.winner] ? r.players[r.winner].name + " wins the round!" : "Game over";
+    $("standings").innerHTML = `<div class="standing" style="justify-content:center;color:var(--mut)">Round: +${r.roundPoints||0} to the winner · first to ${r.target||500} takes the match</div>` + (r.standings||[]).map((s,rank)=>`
+      <div class="standing"><span>#${rank+1} ${esc(r.players[s.seat].name)}${s.left?" (left)":""}</span><span>${s.seat===r.winner?"winner":s.cards+" cards · "+(s.pts||0)+" pts"} · <b>${s.total??(r.totals?r.totals[s.seat]:0)}</b></span></div>`).join("");
+    $("rematchBtn").textContent = r.champion!=null ? "New match" : "Next round";
     $("rematchBtn").classList.toggle("hidden", S.mySeat !== r.hostSeat);
   }
   drawMsgs(r);
