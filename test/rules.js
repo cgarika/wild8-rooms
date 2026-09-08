@@ -218,6 +218,31 @@ async function playToEnd(cs,cap){
           console.log("PASS T6 empty piles + no legal card → round ends, lowest hand wins"); cs.forEach(c=>c.disconnect()); }
       } finally { srv.kill(); }
     }
+    // ---- T9: bot priorities (unit, no sockets) ----
+    {
+      const { botChoose } = require("../server.js");
+      const mkRoom = (hands, top, color) => ({ players: hands.map(() => ({ left: false, done: false })), hands, discard: [top], color, dir: 1, turn: 0 });
+      const card = (c, v) => ({ c, v });
+      // next player on 1 card, +2 in hand → punish with the +2 even though a number card is also legal
+      { const r = mkRoom([[card("r", "5"), card("r", "+2"), card("g", "7")], [card("b", "3")]], card("r", "9"), "r");
+        const ch = botChoose(r, 0); if (!ch || r.hands[0][ch.idx].v !== "+2") throw new Error("T9: expected +2 vs a player on one card, got " + JSON.stringify(ch && r.hands[0][ch.idx]));
+        // order: +4 beats +2 beats Skip beats Reverse
+        const r2 = mkRoom([[card("r", "S"), card("w", "+4"), card("r", "+2"), card("r", "R")], [card("b", "3"), card("b", "4")]], card("r", "9"), "r");
+        const ch2 = botChoose(r2, 0); if (!ch2 || r2.hands[0][ch2.idx].v !== "+4" || ch2.color == null) throw new Error("T9: expected +4 with a colour vs a player on two cards, got " + JSON.stringify(ch2));
+        const r3 = mkRoom([[card("r", "S"), card("r", "R"), card("r", "6")], [card("b", "3"), card("b", "4")]], card("r", "9"), "r");
+        const ch3 = botChoose(r3, 0); if (!ch3 || r3.hands[0][ch3.idx].v !== "S") throw new Error("T9: expected Skip before Reverse, got " + JSON.stringify(ch3));
+        console.log("PASS T9 punishes the next player on 1–2 cards (+4 > +2 > Skip > Reverse)"); }
+      // next player comfortable: number card in the dominant colour first, action cards second, wild last
+      { const r = mkRoom([[card("r", "+2"), card("g", "9"), card("r", "9"), card("g", "2"), card("g", "S"), card("w", "W")], [card("b", "3"), card("b", "4"), card("b", "5")]], card("r", "9"), "r");
+        const ch = botChoose(r, 0); const c = r.hands[0][ch.idx]; if (!(c.c === "g" && c.v === "9")) throw new Error("T9: expected the green 9 (dominant colour number card), got " + JSON.stringify(c));
+        const r2 = mkRoom([[card("r", "+2"), card("g", "S"), card("g", "2"), card("w", "W")], [card("b", "3"), card("b", "4"), card("b", "5")]], card("r", "S"), "r");
+        const ch2 = botChoose(r2, 0); const c2 = r2.hands[0][ch2.idx]; if (!(c2.c === "g" && c2.v === "S")) throw new Error("T9: expected the green Skip (dominant-colour action), got " + JSON.stringify(c2));
+        const r3 = mkRoom([[card("g", "2"), card("g", "3"), card("y", "4"), card("w", "+4"), card("w", "W")], [card("b", "3"), card("b", "4"), card("b", "5")]], card("r", "9"), "r");
+        const ch3 = botChoose(r3, 0); const c3 = r3.hands[0][ch3.idx]; if (!(c3.v === "W" && ch3.color === "g")) throw new Error("T9: expected plain Wild naming green, got " + JSON.stringify([c3, ch3.color]));
+        const r4 = mkRoom([[card("g", "2"), card("g", "3")], [card("b", "3"), card("b", "4"), card("b", "5")]], card("r", "9"), "r");
+        if (botChoose(r4, 0) !== null) throw new Error("T9: expected a draw with no legal card");
+        console.log("PASS T9 colour preference — dominant-colour number, then action, then wild naming that colour, else draw"); }
+    }
     console.log("ALL WILD EIGHTS TESTS PASS");
     process.exit(0);
   }catch(e){ console.error("FAIL:", e.message); process.exit(1); }

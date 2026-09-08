@@ -340,6 +340,37 @@ function botColorPick(room, seat) {
   for (const card of room.hands[seat]) if (card.c !== "w") tally[card.c]++;
   return COLORS.reduce((a, b) => (tally[a] >= tally[b] ? a : b));
 }
+/* T9: bot priorities, first match wins.
+   1. the next player is on 1–2 cards → punish: +4, +2, Skip, Reverse (first that is legal)
+   2. a number card in the colour the bot holds most of
+   3. an action card in that colour
+   4. a wild, naming the dominant colour
+   5. draw.
+   "Last card" is announced by the server for everyone (playCard), so bots never forget to call it. */
+function botChoose(room, seat) {
+  const hand = room.hands[seat];
+  const legal = legalIdx(room, seat);
+  if (!legal.length) return null;
+  const tally = { r: 0, g: 0, y: 0, b: 0 };
+  for (const card of hand) if (card.c !== "w") tally[card.c]++;
+  const dom = botColorPick(room, seat);
+  const isNum = (i) => /^[0-9]$/.test(hand[i].v);
+  const byColour = (idxs) => idxs.slice().sort((a, b) => tally[hand[b].c] - tally[hand[a].c] || a - b);
+  const next = nextSeat(room, seat, 1);
+  if (next !== seat && room.hands[next] && room.hands[next].length <= 2) {
+    for (const v of ["+4", "+2", "S", "R"]) {
+      const i = legal.find((k) => hand[k].v === v);
+      if (i != null) return { idx: i, color: hand[i].c === "w" ? dom : null };
+    }
+  }
+  const nums = byColour(legal.filter((i) => hand[i].c !== "w" && isNum(i)));
+  if (nums.length) return { idx: nums[0], color: null };
+  const acts = byColour(legal.filter((i) => hand[i].c !== "w" && !isNum(i)));
+  if (acts.length) return { idx: acts[0], color: null };
+  const wild = legal.find((i) => hand[i].v === "W") ?? legal.find((i) => hand[i].c === "w");
+  if (wild != null) return { idx: wild, color: dom };
+  return null;
+}
 function botAct(room) {
   const seat = room.turn;
   if (room.phase === "drawn") {
@@ -349,17 +380,9 @@ function botAct(room) {
     playCard(room, seat, idx, pick);
     return;
   }
-  const legal = legalIdx(room, seat);
-  if (!legal.length) { doDraw(room, seat); if (room.phase === "drawn") botAct(room); return; }
-  // prefer non-wild; among them prefer action cards; wilds last
-  const hand = room.hands[seat];
-  const nonWild = legal.filter((i) => hand[i].c !== "w");
-  const pickFrom = nonWild.length ? nonWild : legal;
-  const actions = pickFrom.filter((i) => ["S", "R", "+2", "+4"].includes(hand[i].v));
-  const pool = actions.length && crypto.randomInt(2) === 0 ? actions : pickFrom;
-  const chosen = pool[crypto.randomInt(pool.length)];
-  const card = hand[chosen];
-  playCard(room, seat, chosen, card.c === "w" ? botColorPick(room, seat) : null);
+  const choice = botChoose(room, seat);
+  if (!choice) { doDraw(room, seat); if (room.phase === "drawn") botAct(room); return; }
+  playCard(room, seat, choice.idx, choice.color);
 }
 
 /* ---------- sockets ---------- */
@@ -601,4 +624,5 @@ setInterval(() => {
   for (const [code, room] of rooms) if (now - room.touched > 2 * 60 * 60 * 1000) deleteRoom(code);
 }, 10 * 60 * 1000);
 
-server.listen(PORT, () => console.log("Wild Eights running on port " + PORT));
+if (require.main === module) server.listen(PORT, () => console.log("Wild Eights running on port " + PORT));
+module.exports = { legalIdx, botChoose, botColorPick, nextSeat };
